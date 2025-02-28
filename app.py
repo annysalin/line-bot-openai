@@ -78,6 +78,8 @@ SYSTEM_PROMPT = """
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text
+    reply_text = f"你說的是：{user_message}"
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
     # 使用 OpenAI 生成回應
     response = openai.client().chat.completions.create(
