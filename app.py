@@ -4,7 +4,6 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
-import asyncio
 
 # 設定 LINE API 和 OpenAI API 金鑰
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
@@ -12,7 +11,7 @@ LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # 設定 OpenAI API
-openai.api_key = OPENAI_API_KEY
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # 設定 Flask
 app = Flask(__name__)
@@ -80,19 +79,17 @@ SYSTEM_PROMPT = """
 def handle_message(event):
     user_message = event.message.text
 
-    async def fetch_response():
-        response = await openai.ChatCompletion.acreate(
+    try:
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_message}
             ]
         )
-        return response.choices[0].message.content
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    reply_text = loop.run_until_complete(fetch_response())
+        reply_text = response.choices[0].message.content
+    except Exception as e:
+        reply_text = "發生錯誤，請稍後再試。"
 
     # 回應 LINE 使用者
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
