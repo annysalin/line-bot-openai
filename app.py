@@ -4,6 +4,7 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
+import asyncio
 
 # 設定 LINE API 和 OpenAI API 金鑰
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
@@ -74,24 +75,26 @@ SYSTEM_PROMPT = """
 你不需要給我會話範本，只需要直接開始與我對話即可。
 """
 
-# 處理 LINE 訊息
+# 處理 LINE 訊息（使用 OpenAI API）
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text
-    reply_text = f"你說的是：{user_message}"
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
-    # 使用 OpenAI 生成回應
-    response = openai.client().chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message}
-        ]
-    )
-    reply_text = response["choices"][0]["message"]["content"]
+    async def fetch_response():
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        return response.choices[0].message.content
 
-    # 使用 reply_message 回覆訊息
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    reply_text = loop.run_until_complete(fetch_response())
+
+    # 回應 LINE 使用者
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
 # 啟動 Flask 伺服器
