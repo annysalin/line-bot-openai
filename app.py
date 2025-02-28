@@ -80,7 +80,7 @@ def handle_message(event):
     user_message = event.message.text
 
     # 使用 OpenAI 生成回應
-    response = openai.ChatCompletion.create(
+    response = openai.client().chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
