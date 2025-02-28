@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.models import ReplyMessageRequest, TextMessage, MessageEvent, TextMessageContent
+from linebot.v3.models import TextMessage, MessageEvent, TextMessageContent
 import openai
 import os
 
@@ -91,9 +91,11 @@ def handle_message(event):
     )
     reply_text = response["choices"][0]["message"]["content"]
 
-    # 回覆訊息
-    reply = ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)])
-    messaging_api.reply_message(reply)
+    # 透過 push_message 方式回覆使用者（因為 reply_message 需要不同的 API 格式）
+    messaging_api.push_message(
+        to=event.source.user_id, 
+        messages=[TextMessage(text=reply_text)]
+    )
 
 # 啟動 Flask 伺服器
 if __name__ == "__main__":
