@@ -1,11 +1,12 @@
 from flask import Flask, request, jsonify
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
+from linebot.v3.webhook import WebhookHandler
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.models import ReplyMessageRequest, TextMessage, MessageEvent, TextMessageContent
 import openai
 import os
 
-# 設定 LINE 與 OpenAI API 金鑰
+# 設定 LINE API 和 OpenAI API 金鑰
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -13,56 +14,74 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # 設定 OpenAI API
 openai.api_key = OPENAI_API_KEY
 
-# 定義 AI 的回應規則
-SYSTEM_PROMPT = """
-你是一個華語學習助理，請只使用以下句式與使用者對話：
-- 「請問你要喝什麼？」
-- 「好的，加...(料)加...塊錢。」
-- 「大杯、中杯，還是小杯？」
-- 「大杯嗎？」
-- 「我推薦你喝...。」
-- 「這樣就好了嗎?」
-- 「糖、冰呢？」
-- 「甜度、冰塊呢？」
-- 「....塊錢」
-- 「收您...塊錢。這是您的發票。」
-- 「....(飲料名稱)甜度固定」
-- 「....(飲料名稱)冰塊固定」
-- 「要袋子嗎？」
-- 「一個袋子一塊錢。」
-- 「要吸管嗎？」
-- 「吸管呢？」
-- 「有環保杯折五元」
-- 「買五送一，送什麼？」
-- 「先生，您的飲料好了。」
-- 「小姐，您的飲料好了。」
-不一定要用上所有對話，請讓對話自然進行，並在適當時機結束話題。
-"""
-
-# 初始化 Flask
+# 設定 Flask
 app = Flask(__name__)
 
-# 初始化 LINE SDK
-line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+# 設定 LINE SDK（新版 V3）
+configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
+messaging_api = MessagingApi(ApiClient(configuration))
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # 設定 Webhook
 @app.route("/callback", methods=["POST"])
 def callback():
-    signature = request.headers["X-Line-Signature"]
+    signature = request.headers.get("X-Line-Signature")
     body = request.get_data(as_text=True)
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        return "Invalid signature", 400
-    return "OK"
+        return jsonify({"status": "error", "message": "Invalid signature"}), 400
 
-# LINE 訊息處理
-@handler.add(MessageEvent, message=TextMessage)
+    return jsonify({"status": "ok"}), 200
+
+# 定義 AI 的回應規則
+SYSTEM_PROMPT = """
+你是一名華語會話學習助理。請與我進行一場點餐對話。
+我可以自由表達，但你只能使用以下句式回應，並讓對話自然進行，最後由你主動結束話題，並告知我達成會話目標。
+
+詞彙：
+杯、綠茶、紅茶、奶茶、鮮奶茶、加、波霸、珍珠、椰果、仙草凍、布丁、大杯、中杯、小杯、
+木瓜、香蕉、草莓、芒果、牛奶、柳橙汁、百香果汁、西瓜汁、蘋果汁、推薦、正常冰、少冰、微冰、去冰、熱的、
+全糖、少糖、半糖、微糖、無糖、袋子、杯套、吸管、環保吸管、環保杯
+
+句式：
+「請問你要喝什麼？」
+「好的，加...(料)加...塊錢。」
+「大杯、中杯，還是小杯？」
+「大杯嗎？」
+「我推薦你喝...。」
+「這樣就好了嗎?」
+「糖、冰呢？」
+「甜度、冰塊呢？」
+「....塊錢」
+「收您...塊錢。這是您的發票。」
+「....(飲料名稱)甜度固定」
+「....(飲料名稱)冰塊固定」
+「要袋子嗎？」
+「一個袋子一塊錢。」
+「要吸管嗎？」
+「吸管呢？」
+「有環保杯折五元」
+「買五送一，送什麼？」
+「先生，您的飲料好了。」
+「小姐，您的飲料好了。」
+
+會話主題：「買飲料」
+
+會話結束目標：「成功買到飲料」
+
+會話結束後，請給我一個提示「你達成目標」，告知我對話已經成功。
+
+你不需要給我會話範本，只需要直接開始與我對話即可。
+"""
+
+# 處理 LINE 訊息
+@handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     user_message = event.message.text
 
-    # 發送用戶訊息給 OpenAI API
+    # 使用 OpenAI 生成回應
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[
@@ -70,14 +89,11 @@ def handle_message(event):
             {"role": "user", "content": user_message}
         ]
     )
-
     reply_text = response["choices"][0]["message"]["content"]
-    
-    # 回覆使用者
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply_text)
-    )
+
+    # 回覆訊息
+    reply = ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=reply_text)])
+    messaging_api.reply_message(reply)
 
 # 啟動 Flask 伺服器
 if __name__ == "__main__":
