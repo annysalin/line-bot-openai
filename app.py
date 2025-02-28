@@ -1,9 +1,9 @@
 from flask import Flask, request, jsonify
 from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
-from linebot.v3.webhook import WebhookHandler
+from linebot.v3.webhooks import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging.models import TextMessage
-from linebot.v3.webhook.models import MessageEvent, TextMessageContent
+from linebot.v3.webhooks.models import MessageEvent, TextMessageContent
 import openai
 import os
 
