@@ -1,9 +1,7 @@
 from flask import Flask, request, jsonify
-from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
-from linebot.v3.webhooks import WebhookHandler
-from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.messaging.models import TextMessage
-from linebot.v3.webhooks.models import MessageEvent, TextMessageContent
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
 
@@ -18,9 +16,8 @@ openai.api_key = OPENAI_API_KEY
 # 設定 Flask
 app = Flask(__name__)
 
-# 設定 LINE SDK（新版 V3）
-configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
-messaging_api = MessagingApi(ApiClient(configuration))
+# 設定 LINE SDK（V2）
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # 設定 Webhook
@@ -78,7 +75,7 @@ SYSTEM_PROMPT = """
 """
 
 # 處理 LINE 訊息
-@handler.add(MessageEvent, message=TextMessageContent)
+@handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text
 
@@ -92,11 +89,8 @@ def handle_message(event):
     )
     reply_text = response["choices"][0]["message"]["content"]
 
-    # 透過 push_message 方式回覆使用者（因為 reply_message 需要不同的 API 格式）
-    messaging_api.push_message(
-        to=event.source.user_id, 
-        messages=[TextMessage(text=reply_text)]
-    )
+    # 使用 reply_message 回覆訊息
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
 # 啟動 Flask 伺服器
 if __name__ == "__main__":
